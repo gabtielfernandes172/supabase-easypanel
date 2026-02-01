@@ -32,7 +32,7 @@ services:
     image: supabase/postgres:15.8.1.060
     restart: unless-stopped
     ports:
-      - "5432:5432" # Expor PostgreSQL para acesso externo (MCP)
+      - "5433:5432" # Porta externa 5433 -> interna 5432 (evita conflito com outros PG)
     volumes:
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
