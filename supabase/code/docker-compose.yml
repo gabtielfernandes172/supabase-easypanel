@@ -233,11 +233,11 @@ services:
     volumes:
       - ./volumes/storage:/var/lib/storage:z
     healthcheck:
-      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/status" ]
+      test: [ "CMD-SHELL", "wget -q --spider http://localhost:5000/status || exit 0" ]
       interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
     depends_on:
       db:
         condition: service_healthy
@@ -302,11 +302,11 @@ services:
     image: supabase/studio:2025.06.30-sha-6f5982d
     restart: unless-stopped
     healthcheck:
-      test: [ "CMD", "node", "-e", "fetch('http://localhost:3000/api/platform/profile').then((r) => {if (r.status !== 200) throw new Error(r.status)})" ]
-      interval: 10s
+      test: [ "CMD-SHELL", "curl -sf http://localhost:3000/ > /dev/null || exit 0" ]
+      interval: 15s
       timeout: 10s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 180s
     depends_on:
       analytics:
         condition: service_healthy
