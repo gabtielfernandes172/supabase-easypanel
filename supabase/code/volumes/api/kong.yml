@@ -83,6 +83,12 @@ services:
           allow:
             - admin
             - anon
+      # Rate Limiting para Auth (login, signup, etc)
+      - name: rate-limiting
+        config:
+          minute: 60
+          hour: 500
+          policy: local
 
   ## Secure REST routes
   - name: rest-v1
@@ -104,6 +110,12 @@ services:
           allow:
             - admin
             - anon
+      # Rate Limiting para REST API
+      - name: rate-limiting
+        config:
+          minute: 200
+          hour: 2000
+          policy: local
 
   ## Secure GraphQL routes
   - name: graphql-v1
@@ -130,6 +142,12 @@ services:
           allow:
             - admin
             - anon
+      # Rate Limiting para GraphQL
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 1000
+          policy: local
 
   ## Secure Realtime routes
   - name: realtime-v1-ws
@@ -172,6 +190,7 @@ services:
           allow:
             - admin
             - anon
+
   ## Storage routes: the storage server manages its own auth
   - name: storage-v1
     _comment: 'Storage: /storage/v1/* -> http://storage:5000/*'
@@ -183,6 +202,12 @@ services:
           - /storage/v1/
     plugins:
       - name: cors
+      # Rate Limiting para Storage
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 1000
+          policy: local
 
   ## Edge Functions routes
   - name: functions-v1
@@ -195,6 +220,12 @@ services:
           - /functions/v1/
     plugins:
       - name: cors
+      # Rate Limiting para Edge Functions
+      - name: rate-limiting
+        config:
+          minute: 60
+          hour: 500
+          policy: local
 
   ## Analytics routes
   - name: analytics-v1
