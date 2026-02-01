@@ -31,6 +31,8 @@ services:
   db:
     image: supabase/postgres:15.8.1.060
     restart: unless-stopped
+    ports:
+      - "5432:5432" # Expor PostgreSQL para acesso externo (MCP)
     volumes:
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
