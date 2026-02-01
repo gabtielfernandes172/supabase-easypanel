@@ -32,7 +32,7 @@ services:
     image: supabase/postgres:15.8.1.060
     restart: unless-stopped
     ports:
-      - "5433:5432" # Porta externa 5433 -> interna 5432 (evita conflito com outros PG)
+      - "100.84.227.18:5433:5432" # Expor APENAS via Tailscale (rede privada)
     volumes:
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
