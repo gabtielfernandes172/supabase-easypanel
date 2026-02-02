@@ -222,8 +222,28 @@ services:
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY}
     command: [ "postgrest" ]
 
-  # NOTA: O entrypoint customizado limpa o schema _realtime antes de iniciar
-  # Isso evita problemas de criptografia com dados migrados do Supabase Cloud
+  # Container init separado para executar DROP SCHEMA antes do Realtime iniciar
+  # CRÍTICO: O container realtime NÃO TEM psql, então usamos a imagem postgres
+  realtime-init:
+    image: supabase/postgres:15.8.1.060
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+    command: >
+      /bin/sh -c "
+        echo '[Realtime Init] Aguardando conexão com banco de dados...'
+        sleep 3
+        echo '[Realtime Init] Executando DROP SCHEMA _realtime CASCADE...'
+        psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS _realtime CASCADE;'
+        echo '[Realtime Init] Criando schema _realtime vazio...'
+        psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS _realtime;'
+        echo '[Realtime Init] Schema _realtime preparado com sucesso!'
+      "
+
+  # Realtime service - depende do init container
   realtime:
     image: supabase/realtime:v2.34.47
     restart: unless-stopped
@@ -232,6 +252,8 @@ services:
         condition: service_healthy
       analytics:
         condition: service_healthy
+      realtime-init:
+        condition: service_completed_successfully
     healthcheck:
       test: [ "CMD", "curl", "-sSfL", "--head", "-o", "/dev/null", "-H", "Authorization: Bearer ${ANON_KEY}", "http://localhost:4000/api/tenants/realtime-dev/health" ]
       interval: 10s
@@ -255,18 +277,6 @@ services:
       APP_NAME: realtime-dev
       SEED_SELF_HOST: true
       RUN_JANITOR: true
-    # Entrypoint customizado: Limpa schema _realtime antes de iniciar
-    # Garante que o Realtime sempre inicie com dados criptografados corretamente
-    entrypoint: >
-      /bin/sh -c "
-        echo '[Realtime Init] Aguardando banco de dados...'
-        sleep 5
-        echo '[Realtime Init] Limpando schema _realtime para evitar problemas de criptografia...'
-        PGPASSWORD=$$DB_PASSWORD psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS _realtime CASCADE;' 2>/dev/null || true
-        PGPASSWORD=$$DB_PASSWORD psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS _realtime;' 2>/dev/null || true
-        echo '[Realtime Init] Schema _realtime pronto. Iniciando Realtime...'
-        exec /usr/bin/tini -s -g -- /app/bin/server
-      "
 
   storage:
     image: supabase/storage-api:v1.25.7
