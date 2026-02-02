@@ -150,58 +150,15 @@ services:
           policy: local
 
   ## Secure Realtime routes
-  ## IMPORTANTE: Para WebSocket funcionar, Kong precisa passar os headers Upgrade e Connection
-  - name: realtime-v1-ws
-    _comment: 'Realtime WebSocket: /realtime/v1/websocket -> ws://realtime:4000/socket/websocket'
+  ## Kong 2.8 trata WebSocket automaticamente sobre HTTP quando o cliente envia headers Upgrade
+  - name: realtime-v1
+    _comment: 'Realtime: /realtime/v1/* -> http://realtime:4000/socket/*'
     url: http://realtime:4000/socket
-    protocol: ws
     routes:
-      - name: realtime-v1-ws
-        strip_path: true
-        paths:
-          - /realtime/v1/websocket
-        protocols:
-          - http
-          - https
-          - ws
-          - wss
-    plugins:
-      - name: cors
-      - name: key-auth
-        config:
-          hide_credentials: false
-          key_in_query: true
-          key_names:
-            - apikey
-      - name: acl
-        config:
-          hide_groups_header: true
-          allow:
-            - admin
-            - anon
-      # Garantir que headers de WebSocket sejam passados
-      - name: request-transformer
-        config:
-          add:
-            headers:
-              - "Upgrade:websocket"
-              - "Connection:Upgrade"
-  
-  ## Realtime Socket.io fallback (para clientes que usam polling)
-  - name: realtime-v1-socket
-    _comment: 'Realtime Socket: /realtime/v1/* -> http://realtime:4000/socket/*'
-    url: http://realtime:4000/socket
-    protocol: ws
-    routes:
-      - name: realtime-v1-socket
+      - name: realtime-v1-all
         strip_path: true
         paths:
           - /realtime/v1/
-        protocols:
-          - http
-          - https
-          - ws
-          - wss
     plugins:
       - name: cors
       - name: key-auth
@@ -220,7 +177,6 @@ services:
   - name: realtime-v1-rest
     _comment: 'Realtime REST API: /realtime/v1/api/* -> http://realtime:4000/api/*'
     url: http://realtime:4000/api
-    protocol: http
     routes:
       - name: realtime-v1-rest
         strip_path: true
