@@ -224,6 +224,7 @@ services:
 
   # Container init separado para executar DROP SCHEMA antes do Realtime iniciar
   # CRÍTICO: O container realtime NÃO TEM psql, então usamos a imagem postgres
+  # CRÍTICO 2: O ALTER ROLE garante que migrations criem tabelas em _realtime (não public)
   realtime-init:
     image: supabase/postgres:15.8.1.060
     restart: "no"
@@ -236,6 +237,8 @@ services:
       /bin/sh -c "
         echo '[Realtime Init] Aguardando conexão com banco de dados...'
         sleep 3
+        echo '[Realtime Init] Configurando search_path do supabase_admin...'
+        psql -h db -U supabase_admin -d postgres -c \"ALTER ROLE supabase_admin SET search_path TO _realtime, public, extensions;\"
         echo '[Realtime Init] Executando DROP SCHEMA _realtime CASCADE...'
         psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS _realtime CASCADE;'
         echo '[Realtime Init] Criando schema _realtime vazio...'
