@@ -173,6 +173,11 @@ services:
           allow:
             - admin
             - anon
+      - name: request-transformer
+        config:
+          replace:
+            headers:
+              - "Host:realtime-dev.supabase.co"
             
   - name: realtime-v1-rest
     _comment: 'Realtime REST API: /realtime/v1/api/* -> http://realtime:4000/api/*'
