@@ -141,12 +141,6 @@ services:
     depends_on:
       analytics:
         condition: service_healthy
-      realtime:
-        condition: service_healthy
-      auth:
-        condition: service_healthy
-      rest:
-        condition: service_started
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
@@ -239,20 +233,75 @@ services:
         condition: service_healthy
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_DB: ${POSTGRES_DB}
     command: >
       /bin/sh -c "
         echo '[Realtime Init] Aguardando conexão com banco de dados...'
         sleep 3
-        echo '[Realtime Init] Configurando search_path do supabase_admin (public primeiro para compatibilidade)...'
+        echo '[Realtime Init] Configurando search_path do supabase_admin...'
         psql -h db -U supabase_admin -d postgres -c \"ALTER ROLE supabase_admin SET search_path TO public, _realtime, extensions;\"
-        echo '[Realtime Init] Dropando schema realtime (sem underscore) para limpar funções antigas...'
-        psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS realtime CASCADE;'
-        echo '[Realtime Init] Dropando schema _realtime...'
-        psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS _realtime CASCADE;'
-        echo '[Realtime Init] Criando schemas vazios...'
+        echo '[Realtime Init] Criando schemas se não existirem...'
         psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS realtime;'
         psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS _realtime;'
-        echo '[Realtime Init] Schemas preparados com sucesso!'
+        echo '[Realtime Init] Criando tabela tenants se não existir...'
+        psql -h db -U supabase_admin -d postgres -c '
+          CREATE TABLE IF NOT EXISTS _realtime.tenants (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            name text UNIQUE NOT NULL,
+            external_id text UNIQUE NOT NULL,
+            jwt_secret text NOT NULL,
+            max_concurrent_users integer DEFAULT 200,
+            max_events_per_second integer DEFAULT 100,
+            postgres_cdc_default text DEFAULT \"postgres_cdc_rls\",
+            inserted_at timestamp(0) without time zone NOT NULL DEFAULT now(),
+            updated_at timestamp(0) without time zone NOT NULL DEFAULT now(),
+            max_bytes_per_second integer DEFAULT 100000,
+            max_channels_per_client integer DEFAULT 100,
+            max_joins_per_second integer DEFAULT 100,
+            suspend boolean DEFAULT false,
+            jwt_jwks jsonb
+          );
+        '
+        echo '[Realtime Init] Inserindo tenant realtime-dev se não existir...'
+        psql -h db -U supabase_admin -d postgres -c \"
+          INSERT INTO _realtime.tenants (name, external_id, jwt_secret)
+          VALUES ('realtime-dev', 'realtime-dev', '\${JWT_SECRET}')
+          ON CONFLICT (external_id) DO NOTHING;
+        \"
+        echo '[Realtime Init] Criando tabela extensions se não existir...'
+        psql -h db -U supabase_admin -d postgres -c '
+          CREATE TABLE IF NOT EXISTS _realtime.extensions (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            type text NOT NULL,
+            settings jsonb,
+            tenant_external_id text NOT NULL,
+            inserted_at timestamp(0) without time zone NOT NULL DEFAULT now(),
+            updated_at timestamp(0) without time zone NOT NULL DEFAULT now()
+          );
+        '
+        echo '[Realtime Init] Inserindo extensão broadcast se não existir...'
+        psql -h db -U supabase_admin -d postgres -c \"
+          INSERT INTO _realtime.extensions (type, settings, tenant_external_id)
+          SELECT 'postgres_cdc_rls', 
+                 json_build_object(
+                   'db_host', 'db',
+                   'db_port', '\${POSTGRES_PORT}',
+                   'db_name', '\${POSTGRES_DB}',
+                   'db_user', 'supabase_admin',
+                   'db_password', '\${POSTGRES_PASSWORD}',
+                   'region', 'us-east-1',
+                   'poll_interval_ms', 100,
+                   'poll_max_record_bytes', 1048576,
+                   'ip_version', 4
+                 )::jsonb,
+                 'realtime-dev'
+          WHERE NOT EXISTS (
+            SELECT 1 FROM _realtime.extensions WHERE tenant_external_id = 'realtime-dev' AND type = 'postgres_cdc_rls'
+          );
+        \"
+        echo '[Realtime Init] Configuração concluída com sucesso!'
       "
 
   # Realtime service - depende do init container
