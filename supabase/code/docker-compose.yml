@@ -237,8 +237,8 @@ services:
       /bin/sh -c "
         echo '[Realtime Init] Aguardando conexão com banco de dados...'
         sleep 3
-        echo '[Realtime Init] Configurando search_path do supabase_admin...'
-        psql -h db -U supabase_admin -d postgres -c \"ALTER ROLE supabase_admin SET search_path TO _realtime, public, extensions;\"
+        echo '[Realtime Init] Configurando search_path do supabase_admin (public primeiro para compatibilidade)...'
+        psql -h db -U supabase_admin -d postgres -c \"ALTER ROLE supabase_admin SET search_path TO public, _realtime, extensions;\"
         echo '[Realtime Init] Executando DROP SCHEMA _realtime CASCADE...'
         psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS _realtime CASCADE;'
         echo '[Realtime Init] Criando schema _realtime vazio...'
