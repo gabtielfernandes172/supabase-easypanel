@@ -6,6 +6,25 @@
 # 2. Healthchecks otimizados com start_period maior
 # 3. Kong com plugin request-termination para evitar erros
 # 4. Dependências corrigidas para evitar race conditions
+#
+# ============================================
+# MIGRAÇÃO DE DADOS DO SUPABASE CLOUD
+# ============================================
+# Se você restaurar um backup do Supabase Cloud ou migrar dados via pg_dump,
+# os schemas (auth, storage) podem ter ownership incorreto, causando erros:
+#   - "must be owner of table users"
+#   - "must be owner of schema auth"
+#   - "must be owner of function uid"
+#
+# SOLUÇÃO: Execute o script de correção de ownership:
+#   docker exec -it <container_db> psql -U supabase_admin -d postgres -f /docker-entrypoint-initdb.d/fix-ownership.sql
+#
+# Ou manualmente (conectado ao banco):
+#   ALTER SCHEMA auth OWNER TO supabase_auth_admin;
+#   ALTER SCHEMA storage OWNER TO supabase_storage_admin;
+#
+# Depois reinicie os containers: docker restart <container_auth> <container_storage>
+# ============================================
 
 name: supabase
 
@@ -129,6 +148,12 @@ services:
       KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,request-termination,rate-limiting
       KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
       KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      # WebSocket Support - Headers e Timeouts
+      KONG_NGINX_HTTP_UPSTREAM_KEEPALIVE: "320"
+      KONG_NGINX_HTTP_UPSTREAM_KEEPALIVE_TIMEOUT: "300s"
+      KONG_UPSTREAM_KEEPALIVE_IDLE_TIMEOUT: "300"
+      KONG_NGINX_PROXY_PROXY_READ_TIMEOUT: "300s"
+      KONG_NGINX_PROXY_PROXY_SEND_TIMEOUT: "300s"
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
       DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
