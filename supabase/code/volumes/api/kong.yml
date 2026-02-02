@@ -84,11 +84,15 @@ services:
             - admin
             - anon
       # Rate Limiting para Auth (login, signup, etc)
+      # Limites moderados - auth é sensível a ataques
       - name: rate-limiting
         config:
-          minute: 60
-          hour: 500
+          minute: 500
+          hour: 5000
+          day: 50000
           policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   ## Secure REST routes
   - name: rest-v1
@@ -111,11 +115,16 @@ services:
             - admin
             - anon
       # Rate Limiting para REST API
+      # Limites altos para suportar CRM, Inbox, WhatsApp multi-tenant
+      # 3000/min permite ~50 req/s burst para múltiplos usuários
       - name: rate-limiting
         config:
-          minute: 200
-          hour: 2000
+          minute: 3000
+          hour: 100000
+          day: 1000000
           policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   ## Secure GraphQL routes
   - name: graphql-v1
@@ -143,11 +152,15 @@ services:
             - admin
             - anon
       # Rate Limiting para GraphQL
+      # Limites moderados - queries podem ser pesadas
       - name: rate-limiting
         config:
-          minute: 100
-          hour: 1000
+          minute: 1000
+          hour: 20000
+          day: 200000
           policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   ## Secure Realtime routes
   ## Kong 2.8 trata WebSocket automaticamente sobre HTTP quando o cliente envia headers Upgrade
@@ -214,11 +227,15 @@ services:
     plugins:
       - name: cors
       # Rate Limiting para Storage
+      # Limites moderados - uploads/downloads de mídia WhatsApp
       - name: rate-limiting
         config:
-          minute: 100
-          hour: 1000
+          minute: 500
+          hour: 10000
+          day: 100000
           policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   ## Edge Functions routes
   - name: functions-v1
@@ -232,11 +249,15 @@ services:
     plugins:
       - name: cors
       # Rate Limiting para Edge Functions
+      # Limites controlados - funções de IA podem ser pesadas
       - name: rate-limiting
         config:
-          minute: 60
-          hour: 500
+          minute: 300
+          hour: 5000
+          day: 50000
           policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 
   ## Analytics routes
   - name: analytics-v1
