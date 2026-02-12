@@ -222,9 +222,21 @@ services:
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY}
     command: [ "postgrest" ]
 
-  # Container init separado para executar DROP SCHEMA antes do Realtime iniciar
+  # ============================================
+  # REALTIME INIT - Preparação idempotente de schemas
+  # ============================================
   # CRÍTICO: O container realtime NÃO TEM psql, então usamos a imagem postgres
   # CRÍTICO 2: O ALTER ROLE garante que migrations criem tabelas em _realtime (não public)
+  #
+  # LÓGICA IDEMPOTENTE:
+  #   - Se a tabela _realtime.tenants JÁ EXISTE → pula DROP (server restart seguro)
+  #   - Se NÃO EXISTE → faz DROP CASCADE + CREATE (primeiro deploy ou schema corrompido)
+  #   - Sempre configura search_path do supabase_admin
+  #
+  # IMPORTANTE: Em caso de problemas com Realtime, execute manualmente:
+  #   docker exec <db_container> psql -U supabase_admin -d postgres -c "DROP SCHEMA IF EXISTS _realtime CASCADE; DROP SCHEMA IF EXISTS realtime CASCADE;"
+  #   docker restart <realtime_container>
+  # ============================================
   realtime-init:
     image: supabase/postgres:15.8.1.060
     restart: "no"
@@ -237,19 +249,41 @@ services:
       /bin/sh -c "
         echo '[Realtime Init] Aguardando conexão com banco de dados...'
         sleep 3
-        echo '[Realtime Init] Configurando search_path do supabase_admin (public primeiro para compatibilidade)...'
+
+        echo '[Realtime Init] Configurando search_path do supabase_admin...'
         psql -h db -U supabase_admin -d postgres -c \"ALTER ROLE supabase_admin SET search_path TO public, _realtime, extensions;\"
-        echo '[Realtime Init] Dropando schema realtime (sem underscore) para limpar funções antigas...'
-        psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS realtime CASCADE;'
-        echo '[Realtime Init] Dropando schema _realtime...'
-        psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS _realtime CASCADE;'
-        echo '[Realtime Init] Criando schemas vazios...'
-        psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS realtime;'
-        psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS _realtime;'
-        echo '[Realtime Init] Schemas preparados com sucesso!'
+
+        echo '[Realtime Init] Verificando se _realtime.tenants já existe...'
+        TENANTS_EXISTS=$$(psql -h db -U supabase_admin -d postgres -tAc \"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = '_realtime' AND table_name = 'tenants');\")
+
+        if [ \"$$TENANTS_EXISTS\" = 't' ]; then
+          echo '[Realtime Init] ✅ Tabela _realtime.tenants encontrada — schemas intactos, pulando DROP.'
+          echo '[Realtime Init] Garantindo que schemas existem...'
+          psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS realtime;'
+          psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS _realtime;'
+        else
+          echo '[Realtime Init] ⚠️ Tabela _realtime.tenants NÃO encontrada — recriando schemas do zero...'
+          echo '[Realtime Init] Dropando schema realtime (sem underscore)...'
+          psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS realtime CASCADE;'
+          echo '[Realtime Init] Dropando schema _realtime...'
+          psql -h db -U supabase_admin -d postgres -c 'DROP SCHEMA IF EXISTS _realtime CASCADE;'
+          echo '[Realtime Init] Criando schemas vazios...'
+          psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS realtime;'
+          psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS _realtime;'
+          echo '[Realtime Init] Schemas recriados — Realtime vai rodar migrations no boot.'
+        fi
+
+        echo '[Realtime Init] ✅ Preparação concluída com sucesso!'
       "
 
-  # Realtime service - depende do init container
+  # ============================================
+  # REALTIME SERVICE
+  # ============================================
+  # Depende do init container para garantir que schemas estão preparados.
+  # SEED_SELF_HOST=true faz o Realtime criar a tabela tenants e seed data
+  # automaticamente no primeiro boot. Em restarts subsequentes, ele detecta
+  # que já existe e pula a criação.
+  # ============================================
   realtime:
     image: supabase/realtime:v2.34.47
     restart: unless-stopped
@@ -264,8 +298,8 @@ services:
       test: [ "CMD", "curl", "-sSfL", "--head", "-o", "/dev/null", "-H", "Authorization: Bearer ${ANON_KEY}", "http://localhost:4000/api/tenants/realtime-dev/health" ]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 10
+      start_period: 90s
     environment:
       PORT: 4000
       DB_HOST: db
