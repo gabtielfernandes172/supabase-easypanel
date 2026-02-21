@@ -141,6 +141,12 @@ services:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
       KONG_DNS_ORDER: LAST,A,CNAME
+      # DNS TTL curto: re-resolve IPs a cada 5s para detectar containers reiniciados
+      KONG_DNS_STALE_TTL: "1"
+      KONG_DNS_NOT_FOUND_TTL: "1"
+      KONG_DNS_ERROR_TTL: "1"
+      KONG_DNS_VALID_TTL: "5"
+      KONG_DNS_NO_SYNC: "on"
       KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,request-termination,rate-limiting
       KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
       KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
