@@ -25,9 +25,7 @@
 #
 # Depois reinicie os containers: docker restart <container_auth> <container_storage>
 # ============================================
-
 name: supabase
-
 services:
   vector:
     image: timberio/vector:0.28.1-alpine
@@ -46,12 +44,13 @@ services:
     command: [ "--config", "/etc/vector/vector.yml" ]
     security_opt:
       - "label=disable"
-
   db:
     image: supabase/postgres:15.8.1.060
     restart: unless-stopped
-    ports:
-      - "100.84.227.18:5433:5432" # Expor APENAS via Tailscale (rede privada)
+    # NOTA: Não expor ports diretamente - usar Supavisor (pooler) para acesso externo
+    # Se precisar acesso direto via Tailscale, adicionar:
+    #   ports:
+    #     - "100.84.227.18:5433:5432"
     volumes:
       - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
       - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
@@ -81,7 +80,6 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXP: ${JWT_EXPIRY}
     command: [ "postgres", "-c", "config_file=/etc/postgresql/postgresql.conf", "-c", "log_min_messages=fatal" ]
-
   analytics:
     image: supabase/logflare:1.14.2
     restart: unless-stopped
@@ -110,7 +108,6 @@ services:
       POSTGRES_BACKEND_URL: postgresql://supabase_admin:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/_supabase
       POSTGRES_BACKEND_SCHEMA: _analytics
       LOGFLARE_FEATURE_FLAG_OVERRIDE: multibackend=true
-
   imgproxy:
     image: darthsim/imgproxy:v3.8.0
     restart: unless-stopped
@@ -126,7 +123,6 @@ services:
       IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
       IMGPROXY_USE_ETAG: "true"
       IMGPROXY_ENABLE_WEBP_DETECTION: ${IMGPROXY_ENABLE_WEBP_DETECTION}
-
   kong:
     image: kong:2.8.1
     restart: unless-stopped
@@ -159,7 +155,6 @@ services:
       DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
     entrypoint: bash -c 'eval "echo \"$$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
-
   auth:
     image: supabase/gotrue:v2.177.0
     restart: unless-stopped
@@ -188,6 +183,9 @@ services:
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
       GOTRUE_JWT_EXP: ${JWT_EXPIRY}
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      # Sessão: duração máxima e timeout de inatividade (7 dias = 604800s)
+      GOTRUE_SESSION_TIMEBOX: ${GOTRUE_SESSION_TIMEBOX:-604800}
+      GOTRUE_SESSION_INACTIVITY_TIMEOUT: ${GOTRUE_SESSION_INACTIVITY_TIMEOUT:-604800}
       GOTRUE_EXTERNAL_EMAIL_ENABLED: ${ENABLE_EMAIL_SIGNUP}
       GOTRUE_EXTERNAL_ANONYMOUS_USERS_ENABLED: ${ENABLE_ANONYMOUS_USERS}
       GOTRUE_MAILER_AUTOCONFIRM: ${ENABLE_EMAIL_AUTOCONFIRM}
@@ -203,7 +201,6 @@ services:
       GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${MAILER_URLPATHS_EMAIL_CHANGE}
       GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
       GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
-
   rest:
     image: postgrest/postgrest:v12.2.12
     restart: unless-stopped
@@ -221,7 +218,6 @@ services:
       PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY}
     command: [ "postgrest" ]
-
   # ============================================
   # REALTIME INIT - Preparação idempotente de schemas
   # ============================================
@@ -249,13 +245,10 @@ services:
       /bin/sh -c "
         echo '[Realtime Init] Aguardando conexão com banco de dados...'
         sleep 3
-
         echo '[Realtime Init] Configurando search_path do supabase_admin...'
         psql -h db -U supabase_admin -d postgres -c \"ALTER ROLE supabase_admin SET search_path TO public, _realtime, extensions;\"
-
         echo '[Realtime Init] Verificando se _realtime.tenants já existe...'
         TENANTS_EXISTS=$$(psql -h db -U supabase_admin -d postgres -tAc \"SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema = '_realtime' AND table_name = 'tenants');\")
-
         if [ \"$$TENANTS_EXISTS\" = 't' ]; then
           echo '[Realtime Init] ✅ Tabela _realtime.tenants encontrada — schemas intactos, pulando DROP.'
           echo '[Realtime Init] Garantindo que schemas existem...'
@@ -272,10 +265,8 @@ services:
           psql -h db -U supabase_admin -d postgres -c 'CREATE SCHEMA IF NOT EXISTS _realtime;'
           echo '[Realtime Init] Schemas recriados — Realtime vai rodar migrations no boot.'
         fi
-
         echo '[Realtime Init] ✅ Preparação concluída com sucesso!'
       "
-
   # ============================================
   # REALTIME SERVICE
   # ============================================
@@ -317,7 +308,6 @@ services:
       APP_NAME: realtime-dev
       SEED_SELF_HOST: true
       RUN_JANITOR: true
-
   storage:
     image: supabase/storage-api:v1.25.7
     restart: unless-stopped
@@ -350,7 +340,6 @@ services:
       GLOBAL_S3_BUCKET: stub
       ENABLE_IMAGE_TRANSFORMATION: "true"
       IMGPROXY_URL: http://imgproxy:5001
-
   meta:
     image: supabase/postgres-meta:v0.91.0
     restart: unless-stopped
@@ -371,7 +360,6 @@ services:
       PG_META_DB_NAME: ${POSTGRES_DB}
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
-
   functions:
     image: supabase/edge-runtime:v1.67.4
     restart: unless-stopped
@@ -388,7 +376,6 @@ services:
       SUPABASE_DB_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/${POSTGRES_DB}
       VERIFY_JWT: "${FUNCTIONS_VERIFY_JWT}"
     command: [ "start", "--main-service", "/home/deno/functions/main" ]
-
   studio:
     image: supabase/studio:2025.06.30-sha-6f5982d
     restart: unless-stopped
@@ -416,7 +403,6 @@ services:
       LOGFLARE_URL: http://analytics:4000
       NEXT_PUBLIC_ENABLE_LOGS: true
       NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
-
   supavisor:
     image: supabase/supavisor:2.5.7
     restart: unless-stopped
@@ -452,10 +438,8 @@ services:
       POOLER_POOL_MODE: transaction
       DB_POOL_SIZE: ${POOLER_DB_POOL_SIZE}
     command: [ "/bin/sh", "-c", "/app/bin/migrate && /app/bin/supavisor eval \"$$(cat /etc/pooler/pooler.exs)\" && /app/bin/server" ]
-
 volumes:
   db-config:
-
     # IMPORTANTE: Esta configuração faz o Supabase usar a rede do EasyPanel
     # Isso permite que o Traefik encontre o Kong automaticamente
 networks:
