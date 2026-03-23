@@ -1,6 +1,11 @@
+
+kong.yml
+docs/supabase-easypanel/volumes/api
+
+
+
 _format_version: '2.1'
 _transform: true
-
 ###
 ### Consumers / Users
 ###
@@ -12,7 +17,6 @@ consumers:
   - username: service_role
     keyauth_credentials:
       - key: $SUPABASE_SERVICE_KEY
-
 ###
 ### Access Control List
 ###
@@ -21,7 +25,6 @@ acls:
     group: anon
   - consumer: service_role
     group: admin
-
 ###
 ### Dashboard credentials
 ###
@@ -29,7 +32,6 @@ basicauth_credentials:
   - consumer: DASHBOARD
     username: $DASHBOARD_USERNAME
     password: $DASHBOARD_PASSWORD
-
 ###
 ### API Routes
 ###
@@ -62,7 +64,17 @@ services:
           - /auth/v1/authorize
     plugins:
       - name: cors
-
+  ## JWKS route (necessário para GoTrue v2.188+)
+  - name: auth-v1-open-jwks
+    _comment: 'Auth: /auth/v1/.well-known/jwks.json -> http://auth:9999/.well-known/jwks.json'
+    url: http://auth:9999/.well-known/jwks.json
+    routes:
+      - name: auth-v1-open-jwks
+        strip_path: true
+        paths:
+          - /auth/v1/.well-known/jwks.json
+    plugins:
+      - name: cors
   ## Secure Auth routes
   - name: auth-v1
     _comment: 'GoTrue: /auth/v1/* -> http://auth:9999/*'
@@ -93,7 +105,6 @@ services:
           policy: local
           fault_tolerant: true
           hide_client_headers: false
-
   ## Secure REST routes
   - name: rest-v1
     _comment: 'PostgREST: /rest/v1/* -> http://rest:3000/*'
@@ -125,7 +136,6 @@ services:
           policy: local
           fault_tolerant: true
           hide_client_headers: false
-
   ## Secure GraphQL routes
   - name: graphql-v1
     _comment: 'PostgREST: /graphql/v1/* -> http://rest:3000/rpc/graphql'
@@ -161,7 +171,6 @@ services:
           policy: local
           fault_tolerant: true
           hide_client_headers: false
-
   ## Secure Realtime routes
   ## Kong 2.8 trata WebSocket automaticamente sobre HTTP quando o cliente envia headers Upgrade
   - name: realtime-v1
@@ -214,7 +223,6 @@ services:
           allow:
             - admin
             - anon
-
   ## Storage routes: the storage server manages its own auth
   - name: storage-v1
     _comment: 'Storage: /storage/v1/* -> http://storage:5000/*'
@@ -236,7 +244,6 @@ services:
           policy: local
           fault_tolerant: true
           hide_client_headers: false
-
   ## Edge Functions routes
   - name: functions-v1
     _comment: 'Edge Functions: /functions/v1/* -> http://functions:9000/*'
@@ -258,7 +265,6 @@ services:
           policy: local
           fault_tolerant: true
           hide_client_headers: false
-
   ## Analytics routes
   - name: analytics-v1
     _comment: 'Analytics: /analytics/v1/* -> http://logflare:4000/*'
@@ -268,7 +274,6 @@ services:
         strip_path: true
         paths:
           - /analytics/v1/
-
   ## Secure Database routes
   - name: meta
     _comment: 'pg-meta: /pg/* -> http://pg-meta:8080/*'
@@ -287,7 +292,17 @@ services:
           hide_groups_header: true
           allow:
             - admin
-
+  ## OAuth 2.0 Authorization Server Metadata (RFC 8414)
+  - name: well-known-oauth
+    _comment: 'Auth: /.well-known/oauth-authorization-server -> http://auth:9999/.well-known/oauth-authorization-server'
+    url: http://auth:9999/.well-known/oauth-authorization-server
+    routes:
+      - name: well-known-oauth
+        strip_path: true
+        paths:
+          - /.well-known/oauth-authorization-server
+    plugins:
+      - name: cors
   ## Protected Dashboard - catch all remaining routes
   - name: dashboard
     _comment: 'Studio: /* -> http://studio:3000/*'
