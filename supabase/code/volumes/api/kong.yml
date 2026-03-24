@@ -215,6 +215,8 @@ services:
             headers:
               - "x-api-key:$LUA_RT_WS_EXPR"
           replace:
+            headers:
+              - "Host:realtime-dev.supabase-realtime"
             querystring:
               - "apikey:$LUA_RT_WS_EXPR"
       - name: acl
@@ -248,6 +250,7 @@ services:
           replace:
             headers:
               - "Authorization: $LUA_AUTH_EXPR"
+              - "Host:realtime-dev.supabase-realtime"
       - name: acl
         config:
           hide_groups_header: true
