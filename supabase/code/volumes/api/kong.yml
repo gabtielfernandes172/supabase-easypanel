@@ -1,9 +1,3 @@
-
-kong.yml
-docs/supabase-easypanel/volumes/api
-
-
-
 _format_version: '2.1'
 _transform: true
 ###
@@ -14,9 +8,11 @@ consumers:
   - username: anon
     keyauth_credentials:
       - key: $SUPABASE_ANON_KEY
+      - key: $SUPABASE_PUBLISHABLE_KEY
   - username: service_role
     keyauth_credentials:
       - key: $SUPABASE_SERVICE_KEY
+      - key: $SUPABASE_SECRET_KEY
 ###
 ### Access Control List
 ###
@@ -30,14 +26,15 @@ acls:
 ###
 basicauth_credentials:
   - consumer: DASHBOARD
-    username: $DASHBOARD_USERNAME
-    password: $DASHBOARD_PASSWORD
+    username: '$DASHBOARD_USERNAME'
+    password: '$DASHBOARD_PASSWORD'
 ###
 ### API Routes
 ###
 services:
   ## Open Auth routes
   - name: auth-v1-open
+    _comment: 'Auth: /auth/v1/verify* -> http://auth:9999/verify*'
     url: http://auth:9999/verify
     routes:
       - name: auth-v1-open
@@ -47,6 +44,7 @@ services:
     plugins:
       - name: cors
   - name: auth-v1-open-callback
+    _comment: 'Auth: /auth/v1/callback* -> http://auth:9999/callback*'
     url: http://auth:9999/callback
     routes:
       - name: auth-v1-open-callback
@@ -56,6 +54,7 @@ services:
     plugins:
       - name: cors
   - name: auth-v1-open-authorize
+    _comment: 'Auth: /auth/v1/authorize* -> http://auth:9999/authorize*'
     url: http://auth:9999/authorize
     routes:
       - name: auth-v1-open-authorize
@@ -89,6 +88,14 @@ services:
       - name: key-auth
         config:
           hide_credentials: false
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
+          replace:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
       - name: acl
         config:
           hide_groups_header: true
@@ -96,7 +103,7 @@ services:
             - admin
             - anon
       # Rate Limiting para Auth (login, signup, etc)
-      # Limites moderados - auth é sensível a ataques
+      # [HubMax Custom] Limites moderados - auth é sensível a ataques
       - name: rate-limiting
         config:
           minute: 500
@@ -118,7 +125,15 @@ services:
       - name: cors
       - name: key-auth
         config:
-          hide_credentials: true
+          hide_credentials: false
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
+          replace:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
       - name: acl
         config:
           hide_groups_header: true
@@ -126,7 +141,7 @@ services:
             - admin
             - anon
       # Rate Limiting para REST API
-      # Limites altos para suportar CRM, Inbox, WhatsApp multi-tenant
+      # [HubMax Custom] Limites altos para suportar CRM, Inbox, WhatsApp multi-tenant
       # 3000/min permite ~50 req/s burst para múltiplos usuários
       - name: rate-limiting
         config:
@@ -149,12 +164,16 @@ services:
       - name: cors
       - name: key-auth
         config:
-          hide_credentials: true
+          hide_credentials: false
       - name: request-transformer
         config:
           add:
             headers:
-              - Content-Profile:graphql_public
+              - "Content-Profile: graphql_public"
+              - "Authorization: $LUA_AUTH_EXPR"
+          replace:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
       - name: acl
         config:
           hide_groups_header: true
@@ -162,7 +181,7 @@ services:
             - admin
             - anon
       # Rate Limiting para GraphQL
-      # Limites moderados - queries podem ser pesadas
+      # [HubMax Custom] Limites moderados - queries podem ser pesadas
       - name: rate-limiting
         config:
           minute: 1000
@@ -172,12 +191,13 @@ services:
           fault_tolerant: true
           hide_client_headers: false
   ## Secure Realtime routes
-  ## Kong 2.8 trata WebSocket automaticamente sobre HTTP quando o cliente envia headers Upgrade
-  - name: realtime-v1
-    _comment: 'Realtime: /realtime/v1/* -> http://realtime:4000/socket/*'
+  ## Kong 3.9 suporta WebSocket nativamente via protocol: ws
+  - name: realtime-v1-ws
+    _comment: 'Realtime: /realtime/v1/* -> ws://realtime:4000/socket/*'
     url: http://realtime:4000/socket
+    protocol: ws
     routes:
-      - name: realtime-v1-all
+      - name: realtime-v1-ws
         strip_path: true
         paths:
           - /realtime/v1/
@@ -189,21 +209,24 @@ services:
           key_in_query: true
           key_names:
             - apikey
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "x-api-key:$LUA_RT_WS_EXPR"
+          replace:
+            querystring:
+              - "apikey:$LUA_RT_WS_EXPR"
       - name: acl
         config:
           hide_groups_header: true
           allow:
             - admin
             - anon
-      - name: request-transformer
-        config:
-          replace:
-            headers:
-              - "Host:realtime-dev.supabase.co"
-            
   - name: realtime-v1-rest
     _comment: 'Realtime REST API: /realtime/v1/api/* -> http://realtime:4000/api/*'
     url: http://realtime:4000/api
+    protocol: http
     routes:
       - name: realtime-v1-rest
         strip_path: true
@@ -217,13 +240,29 @@ services:
           key_in_query: true
           key_names:
             - apikey
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
+          replace:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
       - name: acl
         config:
           hide_groups_header: true
           allow:
             - admin
             - anon
-  ## Storage routes: the storage server manages its own auth
+  ## Storage API endpoint (with Authorization header transformation).
+  ## No key-auth — S3 protocol requests don't carry an apikey header.
+  ##
+  ## The request-transformer translates opaque API keys to asymmetric JWTs
+  ## and passes through existing Authorization headers (user JWTs, AWS SigV4).
+  ## When no Authorization or apikey header is present (S3 presigned URLs),
+  ## the Lua expression evaluates to nil which Kong renders as empty string.
+  ## The post-function strips this empty header so Storage's S3 signature
+  ## verification falls through to query-parameter parsing.
   - name: storage-v1
     _comment: 'Storage: /storage/v1/* -> http://storage:5000/*'
     url: http://storage:5000/
@@ -234,8 +273,24 @@ services:
           - /storage/v1/
     plugins:
       - name: cors
+      - name: request-transformer
+        config:
+          add:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
+          replace:
+            headers:
+              - "Authorization: $LUA_AUTH_EXPR"
+      - name: post-function
+        config:
+          access:
+            - |
+              local auth = kong.request.get_header("authorization")
+              if auth == nil or auth == "" or auth:find("^%s*$") then
+                kong.service.request.clear_header("authorization")
+              end
       # Rate Limiting para Storage
-      # Limites moderados - uploads/downloads de mídia WhatsApp
+      # [HubMax Custom] Limites moderados - uploads/downloads de mídia WhatsApp
       - name: rate-limiting
         config:
           minute: 500
@@ -248,6 +303,7 @@ services:
   - name: functions-v1
     _comment: 'Edge Functions: /functions/v1/* -> http://functions:9000/*'
     url: http://functions:9000/
+    read_timeout: 150000
     routes:
       - name: functions-v1-all
         strip_path: true
@@ -256,7 +312,7 @@ services:
     plugins:
       - name: cors
       # Rate Limiting para Edge Functions
-      # Limites controlados - funções de IA podem ser pesadas
+      # [HubMax Custom] Limites controlados - funções de IA podem ser pesadas
       - name: rate-limiting
         config:
           minute: 300
@@ -266,6 +322,7 @@ services:
           fault_tolerant: true
           hide_client_headers: false
   ## Analytics routes
+  ## [HubMax Custom] Mantido roteamento via Kong (oficial comentou)
   - name: analytics-v1
     _comment: 'Analytics: /analytics/v1/* -> http://logflare:4000/*'
     url: http://analytics:4000/
@@ -292,6 +349,20 @@ services:
           hide_groups_header: true
           allow:
             - admin
+  ## Block access to /api/mcp
+  - name: mcp-blocker
+    _comment: 'Block direct access to /api/mcp'
+    url: http://studio:3000/api/mcp
+    routes:
+      - name: mcp-blocker-route
+        strip_path: true
+        paths:
+          - /api/mcp
+    plugins:
+      - name: request-termination
+        config:
+          status_code: 403
+          message: "Access is forbidden."
   ## OAuth 2.0 Authorization Server Metadata (RFC 8414)
   - name: well-known-oauth
     _comment: 'Auth: /.well-known/oauth-authorization-server -> http://auth:9999/.well-known/oauth-authorization-server'
