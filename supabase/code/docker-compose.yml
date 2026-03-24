@@ -168,7 +168,7 @@ services:
       SERVICE_ROLE_KEY_ASYMMETRIC: ${SERVICE_ROLE_KEY_ASYMMETRIC:-}
       DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
-    entrypoint: ["bash", "/home/kong/kong-entrypoint.sh"]
+    entrypoint: /home/kong/kong-entrypoint.sh
   auth:
     image: supabase/gotrue:v2.188.1
     restart: unless-stopped
@@ -215,6 +215,7 @@ services:
       GOTRUE_MAILER_URLPATHS_EMAIL_CHANGE: ${MAILER_URLPATHS_EMAIL_CHANGE}
       GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
       GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
+      GOTRUE_MAILER_EXTERNAL_HOSTS: "supabase.hubmax.ai"
   rest:
     image: postgrest/postgrest:v14.6
     restart: unless-stopped
@@ -327,6 +328,8 @@ services:
       APP_NAME: realtime-dev
       SEED_SELF_HOST: true
       RUN_JANITOR: true
+      METRICS_JWT_SECRET: ${JWT_SECRET}
+      DISABLE_HEALTHCHECK_LOGGING: "true"
   storage:
     image: supabase/storage-api:v1.44.2
     restart: unless-stopped
