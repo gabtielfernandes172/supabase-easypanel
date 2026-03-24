@@ -327,8 +327,6 @@ services:
       APP_NAME: realtime-dev
       SEED_SELF_HOST: true
       RUN_JANITOR: true
-      METRICS_JWT_SECRET: ${JWT_SECRET}
-      DISABLE_HEALTHCHECK_LOGGING: "true"
   storage:
     image: supabase/storage-api:v1.44.2
     restart: unless-stopped
