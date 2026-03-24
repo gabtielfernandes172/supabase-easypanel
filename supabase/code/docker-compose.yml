@@ -124,7 +124,7 @@ services:
       IMGPROXY_USE_ETAG: "true"
       IMGPROXY_ENABLE_WEBP_DETECTION: ${IMGPROXY_ENABLE_WEBP_DETECTION}
   kong:
-    image: kong:2.8.1
+    image: kong/kong:3.9.1
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "kong", "health" ]
@@ -133,24 +133,27 @@ services:
       retries: 5
       start_period: 30s
     volumes:
+      # kong.yml monta como temp.yml — entrypoint processa e gera config final
       - ./volumes/api/kong.yml:/home/kong/temp.yml:ro,z
+      - ./volumes/api/kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro,z
     depends_on:
       analytics:
         condition: service_healthy
     environment:
       KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /home/kong/kong.yml
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/kong.yml
       KONG_DNS_ORDER: LAST,A,CNAME
-      # DNS TTL curto: re-resolve IPs a cada 5s para detectar containers reiniciados
+      # [HubMax Custom] DNS TTL curto: re-resolve IPs a cada 5s para detectar containers reiniciados
       KONG_DNS_STALE_TTL: "1"
       KONG_DNS_NOT_FOUND_TTL: "1"
       KONG_DNS_ERROR_TTL: "1"
       KONG_DNS_VALID_TTL: "5"
       KONG_DNS_NO_SYNC: "on"
-      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,request-termination,rate-limiting
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,request-termination,rate-limiting,post-function,ip-restriction
       KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
       KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
-      # WebSocket Support - Headers e Timeouts
+      KONG_PROXY_ACCESS_LOG: /dev/stdout combined
+      # [HubMax Custom] WebSocket Support - Headers e Timeouts
       KONG_NGINX_HTTP_UPSTREAM_KEEPALIVE: "320"
       KONG_NGINX_HTTP_UPSTREAM_KEEPALIVE_TIMEOUT: "300s"
       KONG_UPSTREAM_KEEPALIVE_IDLE_TIMEOUT: "300"
@@ -158,9 +161,14 @@ services:
       KONG_NGINX_PROXY_PROXY_SEND_TIMEOUT: "300s"
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      # API keys opacas (sb_...) — vazias = modo legacy HS256
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+      ANON_KEY_ASYMMETRIC: ${ANON_KEY_ASYMMETRIC:-}
+      SERVICE_ROLE_KEY_ASYMMETRIC: ${SERVICE_ROLE_KEY_ASYMMETRIC:-}
       DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
       DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
-    entrypoint: bash -c 'eval "echo \"$$(cat ~/temp.yml)\"" > ~/kong.yml && /docker-entrypoint.sh kong docker-start'
+    entrypoint: /home/kong/kong-entrypoint.sh
   auth:
     image: supabase/gotrue:v2.188.1
     restart: unless-stopped
@@ -208,7 +216,7 @@ services:
       GOTRUE_EXTERNAL_PHONE_ENABLED: ${ENABLE_PHONE_SIGNUP}
       GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
   rest:
-    image: postgrest/postgrest:v12.2.12
+    image: postgrest/postgrest:v14.6
     restart: unless-stopped
     depends_on:
       db:
@@ -218,8 +226,11 @@ services:
     environment:
       PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:${POSTGRES_PORT}/${POSTGRES_DB}
       PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS}
+      PGRST_DB_MAX_ROWS: ${PGRST_DB_MAX_ROWS:-1000}
+      PGRST_DB_EXTRA_SEARCH_PATH: ${PGRST_DB_EXTRA_SEARCH_PATH:-public}
       PGRST_DB_ANON_ROLE: anon
-      PGRST_JWT_SECRET: ${JWT_SECRET}
+      # PostgREST v14: aceita JWT secret plain-text, JWK, ou JWKS
+      PGRST_JWT_SECRET: ${JWT_JWKS:-${JWT_SECRET}}
       PGRST_DB_USE_LEGACY_GUCS: "false"
       PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
       PGRST_APP_SETTINGS_JWT_EXP: ${JWT_EXPIRY}
@@ -308,6 +319,8 @@ services:
       DB_ENC_KEY: supabaserealtime
       API_JWT_SECRET: ${JWT_SECRET}
       SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      METRICS_JWT_SECRET: ${JWT_SECRET}
+      DISABLE_HEALTHCHECK_LOGGING: "true"
       ERL_AFLAGS: -proto_dist inet_tcp
       DNS_NODES: "''"
       RLIMIT_NOFILE: "10000"
