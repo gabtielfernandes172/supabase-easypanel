@@ -103,12 +103,12 @@ services:
             - admin
             - anon
       # Rate Limiting para Auth (login, signup, etc)
-      # [HubMax Custom] Limites moderados - auth é sensível a ataques
+      # [HubMax Custom] Limites aumentados - auth é sensível mas multi-tenant exige volume
       - name: rate-limiting
         config:
-          minute: 500
-          hour: 5000
-          day: 50000
+          minute: 1000
+          hour: 20000
+          day: 200000
           policy: local
           fault_tolerant: true
           hide_client_headers: false
@@ -141,13 +141,13 @@ services:
             - admin
             - anon
       # Rate Limiting para REST API
-      # [HubMax Custom] Limites altos para suportar CRM, Inbox, WhatsApp multi-tenant
-      # 3000/min permite ~50 req/s burst para múltiplos usuários
+      # [HubMax Custom] Limites altos para suportar CRM, Inbox, WhatsApp multi-tenant + workers
+      # 10000/min permite ~167 req/s burst para webhooks + workers + multi-tenant
       - name: rate-limiting
         config:
-          minute: 3000
-          hour: 100000
-          day: 1000000
+          minute: 10000
+          hour: 300000
+          day: 3000000
           policy: local
           fault_tolerant: true
           hide_client_headers: false
@@ -293,12 +293,12 @@ services:
                 kong.service.request.clear_header("authorization")
               end
       # Rate Limiting para Storage
-      # [HubMax Custom] Limites moderados - uploads/downloads de mídia WhatsApp
+      # [HubMax Custom] Limites aumentados - uploads/downloads de mídia WhatsApp em volume
       - name: rate-limiting
         config:
-          minute: 500
-          hour: 10000
-          day: 100000
+          minute: 2000
+          hour: 50000
+          day: 500000
           policy: local
           fault_tolerant: true
           hide_client_headers: false
