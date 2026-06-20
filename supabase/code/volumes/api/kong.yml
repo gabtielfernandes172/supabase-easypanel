@@ -13,6 +13,21 @@ consumers:
     keyauth_credentials:
       - key: $SUPABASE_SERVICE_KEY
       - key: $SUPABASE_SECRET_KEY
+    # [HubMax] Isenta o service_role (api-server + todos os workers = cliente interno
+    # confiavel; a chave e secreta) dos rate-limits por-servico. Todo o backend usa o
+    # mesmo service_role, compartilhando UM orcamento (REST 10000/min); no cold-start de
+    # deploy o catch-up coletivo estoura isso -> 429 -> retry storm que so o restart do
+    # Kong quebra. Plugin scoped no CONSUMER sobrepoe os limites por-servico SO para o
+    # service_role (precedencia Kong: consumer > service). anon/externo segue limitado.
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 600000
+          hour: 30000000
+          day: 600000000
+          policy: local
+          fault_tolerant: true
+          hide_client_headers: false
 ###
 ### Access Control List
 ###
@@ -143,6 +158,7 @@ services:
       # Rate Limiting para REST API
       # [HubMax Custom] Limites altos para suportar CRM, Inbox, WhatsApp multi-tenant + workers
       # 10000/min permite ~167 req/s burst para webhooks + workers + multi-tenant
+      # (service_role e isento via plugin no consumer; este limite vale para anon/externo)
       - name: rate-limiting
         config:
           minute: 10000
