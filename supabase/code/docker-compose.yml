@@ -177,7 +177,7 @@ services:
           - kvm5_supabase_kong
     entrypoint: ["bash", "/home/kong/kong-entrypoint.sh"]
   auth:
-    image: supabase/gotrue:v2.188.1
+    image: supabase/gotrue:v2.189.0
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health" ]
@@ -224,7 +224,7 @@ services:
       GOTRUE_SMS_AUTOCONFIRM: ${ENABLE_PHONE_AUTOCONFIRM}
       GOTRUE_MAILER_EXTERNAL_HOSTS: "supabase.hubmax.ai"
   rest:
-    image: postgrest/postgrest:v14.6
+    image: postgrest/postgrest:v14.12
     restart: unless-stopped
     depends_on:
       db:
@@ -301,7 +301,7 @@ services:
   # que já existe e pula a criação.
   # ============================================
   realtime:
-    image: supabase/realtime:v2.76.5
+    image: supabase/realtime:v2.102.3
     restart: unless-stopped
     depends_on:
       db:
@@ -336,7 +336,7 @@ services:
       SEED_SELF_HOST: true
       RUN_JANITOR: true
   storage:
-    image: supabase/storage-api:v1.44.2
+    image: supabase/storage-api:v1.60.4
     restart: unless-stopped
     volumes:
       - ./volumes/storage:/var/lib/storage:z
@@ -370,7 +370,7 @@ services:
       ENABLE_IMAGE_TRANSFORMATION: "true"
       IMGPROXY_URL: http://imgproxy:5001
   meta:
-    image: supabase/postgres-meta:v0.95.2
+    image: supabase/postgres-meta:v0.96.6
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "node", "--version" ]
@@ -390,7 +390,7 @@ services:
       PG_META_DB_USER: supabase_admin
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
   functions:
-    image: supabase/edge-runtime:v1.71.2
+    image: supabase/edge-runtime:v1.74.0
     restart: unless-stopped
     volumes:
       - ./volumes/functions:/home/deno/functions:Z
@@ -406,7 +406,7 @@ services:
       VERIFY_JWT: "${FUNCTIONS_VERIFY_JWT}"
     command: [ "start", "--main-service", "/home/deno/functions/main" ]
   studio:
-    image: supabase/studio:2026.03.16-sha-5528817
+    image: supabase/studio:2026.06.03-sha-0bca601
     restart: unless-stopped
     healthcheck:
       test: [ "CMD-SHELL", "curl -sf http://localhost:3000/ > /dev/null || exit 0" ]
@@ -435,7 +435,7 @@ services:
       NEXT_ANALYTICS_BACKEND_PROVIDER: postgres
       SNIPPETS_MANAGEMENT_FOLDER: /app/snippets
   supavisor:
-    image: supabase/supavisor:2.7.4
+    image: supabase/supavisor:2.9.5
     restart: unless-stopped
     volumes:
       - ./volumes/pooler/pooler.exs:/etc/pooler/pooler.exs:ro,z
