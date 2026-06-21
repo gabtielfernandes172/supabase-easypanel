@@ -45,7 +45,7 @@ services:
     security_opt:
       - "label=disable"
   db:
-    image: supabase/postgres:15.8.1.085
+    image: supabase/postgres:17.6.1.136
     restart: unless-stopped
     # NOTA: O MCP do Postgres do hubmax requer conexão externa.
     # Expondo via rede isolada Tailscale na porta 5438 (evita conflito com 5432/5433).
@@ -252,7 +252,7 @@ services:
   #   docker restart <realtime_container>
   # ============================================
   realtime-init:
-    image: supabase/postgres:15.8.1.085
+    image: supabase/postgres:17.6.1.136
     restart: "no"
     depends_on:
       db:
